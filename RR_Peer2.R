@@ -8,12 +8,15 @@ library(ggplot2)
 library(grid) #pushViewport
 library(R.utils) #bunzip2
 library(stringr) #str_trim
-library(stringdist)
+library(plyr) #count
+library(stringdist) #stringdist
+library(RColorBrewer)
 
 sessionInfo()
 
-# Get data
+# Preparation
 
+## Get data
 download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", destfile = "StormData.csv.bz2", method = "curl")
 download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf", destfile = "StormData_Documentation.pdf", method = "curl")
 download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf", destfile = "StormData_FAQ.pdf", method = "curl")
@@ -21,51 +24,165 @@ download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%
 bunzip2("StormData.csv.bz2", overwrite = FALSE, remove = FALSE)
 
 SD_Raw <- read.csv("StormData.csv", header = TRUE, sep = ",")
-# Generated from the documentation
+
+## Generated from the documentation
 EVTYPE_Ref <- read.csv("EVTYPE_Ref.txt",header = TRUE, sep =",")
+EVTYPE_Ref$EVTYPE <- toupper(str_trim(EVTYPE_Ref$EVTYPE))
+EVTYPE_Ref$Designator <- toupper(str_trim(EVTYPE_Ref$Designator))
 
-# Question 1
-# Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
-summary(SD_Raw)
+## Clean the dataset
+SD_Raw$BGN_DATE <- as.Date(SD_Raw$BGN_DATE,"%m/%d/%Y")
+SD_Raw_Modern <- subset(SD_Raw,format(SD_Raw$BGN_DATE,"%Y") >= 1990)
 
+SD_Raw_Modern$EVTYPE <- toupper(str_trim(as.character(SD_Raw_Modern$EVTYPE)))
+
+SD_Raw_Modern$PROPDMGEXP <- as.character(SD_Raw_Modern$PROPDMGEXP)
+
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "-", c("PROPDMGEXP")] <- 1
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "+", c("PROPDMGEXP")] <- 1
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "", c("PROPDMGEXP")] <- 1
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "?", c("PROPDMGEXP")] <- 1
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "0", c("PROPDMGEXP")] <- 1
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "1", c("PROPDMGEXP")] <- 10
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "2", c("PROPDMGEXP")] <- 100
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "3", c("PROPDMGEXP")] <- 1000
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "4", c("PROPDMGEXP")] <- 1000*10
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "5", c("PROPDMGEXP")] <- 1000*100
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "6", c("PROPDMGEXP")] <- 1000*1000
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "7", c("PROPDMGEXP")] <- 1000*1000*10
+SD_Raw_Modern[SD_Raw_Modern$PROPDMGEXP == "8", c("PROPDMGEXP")] <- 1000*1000*100
+SD_Raw_Modern[tolower(SD_Raw_Modern$PROPDMGEXP) == "h", c("PROPDMGEXP")] <- 100
+SD_Raw_Modern[tolower(SD_Raw_Modern$PROPDMGEXP) == "k", c("PROPDMGEXP")] <- 1000
+SD_Raw_Modern[tolower(SD_Raw_Modern$PROPDMGEXP) == "m", c("PROPDMGEXP")] <- 1000*1000
+SD_Raw_Modern[tolower(SD_Raw_Modern$PROPDMGEXP) == "b", c("PROPDMGEXP")] <- 1000*1000*1000
+
+SD_Raw_Modern$CROPDMGEXP <- as.character(SD_Raw_Modern$CROPDMGEXP)
+
+SD_Raw_Modern[SD_Raw_Modern$CROPDMGEXP == "", c("CROPDMGEXP")] <- 1
+SD_Raw_Modern[SD_Raw_Modern$CROPDMGEXP == "0", c("CROPDMGEXP")] <- 1
+SD_Raw_Modern[SD_Raw_Modern$CROPDMGEXP == "?", c("CROPDMGEXP")] <- 1
+SD_Raw_Modern[SD_Raw_Modern$CROPDMGEXP == "2", c("CROPDMGEXP")] <- 100
+SD_Raw_Modern[tolower(SD_Raw_Modern$CROPDMGEXP) == "h", c("CROPDMGEXP")] <- 100
+SD_Raw_Modern[tolower(SD_Raw_Modern$CROPDMGEXP) == "k", c("CROPDMGEXP")] <- 1000
+SD_Raw_Modern[tolower(SD_Raw_Modern$CROPDMGEXP) == "m", c("CROPDMGEXP")] <- 1000*1000
+SD_Raw_Modern[tolower(SD_Raw_Modern$CROPDMGEXP) == "b", c("CROPDMGEXP")] <- 1000*1000*1000
+
+SD_Raw_Modern$TOTALDMG <- SD_Raw_Modern$PROPDMG * as.numeric(SD_Raw_Modern$PROPDMGEXP) +
+                          SD_Raw_Modern$CROPDMG * as.numeric(SD_Raw_Modern$CROPDMGEXP)
+
+# Aggregate data
 h1 <- aggregate(
-     cbind(SD_Raw$FATALITIES,SD_Raw$INJURIES)
+     cbind(
+          SD_Raw_Modern$FATALITIES,
+          SD_Raw_Modern$INJURIES,
+          SD_Raw_Modern$TOTALDMG
+          )
     ,by=list(
-            format(as.Date(SD_Raw$BGN_DATE,"%m/%d/%Y"),"%Y")
-            ,toupper(str_trim(as.character(SD_Raw$EVTYPE)))
+            format(SD_Raw_Modern$BGN_DATE,"%Y")
+            ,SD_Raw_Modern$EVTYPE
       )
     ,FUN=sum
   )
 
-names(h1) <- c("YEAR","EVTYPE","FATALITIES","INJURIES") 
+names(h1) <- c("YEAR","EVTYPE","FATALITIES","INJURIES","TOTALDMG") 
 
-h1_modern <- subset(h1,h1$YEAR >= 1990)
+h1 <- subset(h1,h1$FATALITIES + h1$INJURIES + h1$TOTALDMG > 0 )
+
+# Reconcile Event Type with 48 reference values
+
+## carthesian product
+temp_01 <- merge(unique(h1$EVTYPE),EVTYPE_Ref,by=NULL)
+temp_01$x <- as.character(temp_01$x)
+names(temp_01) <- c("EVTYPE.x","EVTYPE.y","Designator")
+
+## for each combination of EVTYPE, we calculate the distance
+temp_01$check = 1 - stringdist(temp_01$EVTYPE.x,temp_01$EVTYPE.y,method='jw',p=0.1)
+
+## then we go look for the higher one
+temp_02 <- aggregate(temp_01$check,by=list(temp_01$EVTYPE.x),FUN=max)
+names(temp_02) <- c("EVTYPE.x","check")  
+
+## and keep only the best ones
+temp_02 <- subset(temp_02,temp_02$check > 0.8)
+temp_03 <- merge(temp_01,temp_02,by=c("EVTYPE.x","check"),all=FALSE) 
+
+## and also remove the matches where more than one result was returned
+temp_03 <- merge(temp_03,count(temp_03,"EVTYPE.x"),by="EVTYPE.x")
+temp_03 <- subset(temp_03,temp_03$freq == 1)
+
+h1 <- merge(h1,temp_03,by.x="EVTYPE",by.y="EVTYPE.x",all.x=TRUE)
+names(h1) <- c("EVTYPE","YEAR","FATALITIES","INJURIES","TOTALDMG","EVTYPE_CONFIDENCE","EVTYPE_REF48","DESIGNATOR","EVTYPE_FREQUENCY")
+h1$EVTYPE_REF48[is.na(h1$EVTYPE_REF48)] <- "UNKOWN"
+h1$DESIGNATOR[is.na(h1$DESIGNATOR)] <- "UNKOWN"
 
 
-3. Apply regex to aggregated data to classify them into 48 NOAA types + unclassified.
+#Create a custom color scale
+myColors <- brewer.pal(4,"Set2")
+names(myColors) <- levels(factor(h1$DESIGNATOR))
 
+# Question 1
+# Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
 
+# plot
+q1_data <- aggregate(h1$INJURIES,by=list(h1$YEAR,h1$DESIGNATOR),FUN=sum)
+names(q1_data)<-c("YEAR","DESIGNATOR","INJURIES")
+q1_data$fDESIGNATOR <- factor(q1_data$DESIGNATOR)
+q1 <- ggplot(q1_data,aes(x=YEAR, y=INJURIES, fill=fDESIGNATOR))
+q1 <- q1 + geom_bar(stat="identity")
+q1 <- q1 + ylim(0,10000) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+q1 <- q1 + scale_fill_manual("Designator", values = myColors)
 
+q2_data <- aggregate(h1$FATALITIES,by=list(h1$YEAR,h1$DESIGNATOR),FUN=sum)
+names(q2_data)<-c("YEAR","DESIGNATOR","FATALITIES")
+q2_data$fDESIGNATOR <- factor(q2_data$DESIGNATOR)
+q2 <- ggplot(q2_data,aes(x=YEAR, y=FATALITIES, fill=fDESIGNATOR))
+q2 <- q2 + geom_bar(stat="identity") 
+q2 <- q2 + ylim(0,10000) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+q2 <- q2 + scale_fill_manual("Designator", values = myColors)
 
+q3_data <- aggregate(h1$INJURIES, by=list(h1$EVTYPE_REF48,h1$DESIGNATOR),FUN=sum)
+names(q3_data)<-c("EVENT","DESIGNATOR","INJURIES")
+q3_data$fDESIGNATOR <- factor(q3_data$DESIGNATOR)
+q3_data <- head(q3_data[order(q3_data$INJURIES,decreasing=T),],20)
+q3 <- ggplot(q3_data,aes(x=reorder(EVENT,INJURIES), y=INJURIES, fill=fDESIGNATOR))
+q3 <- q3 + geom_bar(stat="identity") + coord_flip()  + xlab("TOP 20 CAUSE")
+q3 <- q3 + scale_fill_manual("Designator", values = myColors)
 
+q4_data <- aggregate(h1$FATALITIES, by=list(h1$EVTYPE_REF48,h1$DESIGNATOR),FUN=sum)
+names(q4_data)<-c("EVENT","DESIGNATOR","FATALITIES")
+q4_data$fDESIGNATOR <- factor(q4_data$DESIGNATOR)
+q4_data <- head(q4_data[order(q4_data$FATALITIES,decreasing=T),],20)
+q4 <- ggplot(q4_data,aes(x=reorder(EVENT,FATALITIES), y=FATALITIES, fill=fDESIGNATOR))
+q4 <- q4 + geom_bar(stat="identity") + coord_flip() + xlab("TOP 20 CAUSE")
+q4 <- q4 + scale_fill_manual("Designator", values = myColors)
 
-q1 <- ggplot(h1_modern,aes(x=YEAR, y=INJURIES, colour=YEAR))
-q1 <- q1 + geom_bar(stat="identity") +ylim(0,10000)
-
-q2 <- ggplot(h1_modern,aes(x=YEAR, y=FATALITIES))
-q2 <- q2 + geom_bar(stat="identity") +ylim(0,10000)
-
-pushViewport(viewport(layout = grid.layout(1, 2)))
+pushViewport(viewport(layout = grid.layout(2, 2)))
 print(q1, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
 print(q2, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
-
-
-
-EVLIST <- unique(h1_modern$EVTYPE[h1_modern$FATALITIES + h1_modern$INJURIES>0])
-
-
-
-
+print(q3, vp = viewport(layout.pos.row = 2, layout.pos.col = 1))
+print(q4, vp = viewport(layout.pos.row = 2, layout.pos.col = 2))
 
 # Question 2
 # Across the United States, which types of events have the greatest economic consequences?
+
+# plot
+q5_data <- aggregate(h1$TOTALDMG,by=list(h1$YEAR,h1$DESIGNATOR),FUN=sum)
+names(q5_data)<-c("YEAR","DESIGNATOR","TOTALDMG")
+q5_data$fDESIGNATOR <- factor(q5_data$DESIGNATOR)
+q5 <- ggplot(q5_data,aes(x=YEAR, y=TOTALDMG, fill=fDESIGNATOR))
+q5 <- q5 + geom_bar(stat="identity")
+q5 <- q5 + theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+q5 <- q5 + scale_fill_manual("Designator", values = myColors)
+
+q6_data <- aggregate(h1$TOTALDMG, by=list(h1$EVTYPE_REF48,h1$DESIGNATOR),FUN=sum)
+names(q6_data)<-c("EVENT","DESIGNATOR","TOTALDMG")
+q6_data$fDESIGNATOR <- factor(q6_data$DESIGNATOR)
+q6_data <- head(q6_data[order(q6_data$TOTALDMG,decreasing=T),],20)
+q6 <- ggplot(q6_data,aes(x=reorder(EVENT,TOTALDMG), y=TOTALDMG, fill=fDESIGNATOR))
+q6 <- q6 + geom_bar(stat="identity") + coord_flip()  + xlab("TOP 20 CAUSE")
+q6 <- q6 + scale_fill_manual("Designator", values = myColors)
+
+pushViewport(viewport(layout = grid.layout(2, 1)))
+print(q5, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
+print(q6, vp = viewport(layout.pos.row = 2, layout.pos.col = 1))
+
