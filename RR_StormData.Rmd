@@ -219,7 +219,6 @@ q5 <- ggplot(q5_data,aes(x=YEAR, y=TOTALDMG, fill=fDESIGNATOR))
 q5 <- q5 + geom_bar(stat="identity")
 q5 <- q5 + theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
 q5 <- q5 + scale_fill_manual("Designator", values = myColors) + ylab("TOTALDMG $)")
-q5
 
 q6_data <- aggregate(h1$TOTALDMG, by=list(h1$EVTYPE_REF48,h1$DESIGNATOR),FUN=sum)
 names(q6_data)<-c("EVENT","DESIGNATOR","TOTALDMG")
@@ -228,7 +227,6 @@ q6_data <- head(q6_data[order(q6_data$TOTALDMG,decreasing=T),],20)
 q6 <- ggplot(q6_data,aes(x=reorder(EVENT,TOTALDMG), y=TOTALDMG, fill=fDESIGNATOR))
 q6 <- q6 + geom_bar(stat="identity") + coord_flip()  + xlab("TOP 20 CAUSE") + ylab("TOTALDMG $")
 q6 <- q6 + scale_fill_manual("Designator", values = myColors)
-q6
 
 pushViewport(viewport(layout = grid.layout(2, 1)))
 print(q5, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
