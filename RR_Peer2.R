@@ -5,8 +5,10 @@ setwd("~/Documents/GitHub/RepData_PeerAssessment2")
 Sys.setlocale("LC_TIME", "en_US")
 
 library(ggplot2)
-library(grid)
+library(grid) #pushViewport
 library(R.utils) #bunzip2
+library(stringr) #str_trim
+library(stringdist)
 
 sessionInfo()
 
@@ -20,7 +22,7 @@ bunzip2("StormData.csv.bz2", overwrite = FALSE, remove = FALSE)
 
 SD_Raw <- read.csv("StormData.csv", header = TRUE, sep = ",")
 
-EVTYPE_Ref <- read.csv("EVTYPE_Ref.txt",header = FALSE, sep =",")
+EVTYPE_Ref <- read.csv("EVTYPE_Ref.txt",header = TRUE, sep =",")
 
 # Question 1
 # Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
@@ -30,7 +32,7 @@ h1 <- aggregate(
      cbind(SD_Raw$FATALITIES,SD_Raw$INJURIES)
     ,by=list(
             format(as.Date(SD_Raw$BGN_DATE,"%m/%d/%Y"),"%Y")
-            ,as.character(SD_Raw$EVTYPE)
+            ,toupper(str_trim(as.character(SD_Raw$EVTYPE)))
       )
     ,FUN=sum
   )
@@ -38,6 +40,14 @@ h1 <- aggregate(
 names(h1) <- c("YEAR","EVTYPE","FATALITIES","INJURIES") 
 
 h1_modern <- subset(h1,h1$YEAR >= 1990)
+
+
+3. Apply regex to aggregated data to classify them into 48 NOAA types + unclassified.
+
+
+
+
+
 
 q1 <- ggplot(h1_modern,aes(x=YEAR, y=INJURIES, colour=YEAR))
 q1 <- q1 + geom_bar(stat="identity") +ylim(0,10000)
