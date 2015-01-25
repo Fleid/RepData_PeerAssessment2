@@ -21,7 +21,7 @@ download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%
 bunzip2("StormData.csv.bz2", overwrite = FALSE, remove = FALSE)
 
 SD_Raw <- read.csv("StormData.csv", header = TRUE, sep = ",")
-
+# Generated from the documentation
 EVTYPE_Ref <- read.csv("EVTYPE_Ref.txt",header = TRUE, sep =",")
 
 # Question 1
